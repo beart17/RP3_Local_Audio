@@ -1,16 +1,12 @@
 ﻿using System;
 using System.Linq;
 using System.Collections.Generic;
-using System.Collections;
-using System.Text;
 using System.Diagnostics;
 using System.Globalization;
 using System.Timers;
-using System.IO;
 using NAudio.Wave;
-using NAudio.SoundTouch;
-using System.Windows.Forms;
-using System.Threading;
+using SoundTouch;
+
 
 /*
  * Distance over time is the performance output of the C2
@@ -21,7 +17,7 @@ using System.Threading;
  * to add?: strokelength current?
  * 
  * assumptions:
- * Recovery->Assume linear deceleration
+ * Recovery -> Assume linear deceleration
  * Drag force proportional to (rotational) velocity^2
  * 
  * to fix:
@@ -42,8 +38,6 @@ using System.Threading;
  * RP3 flywheel weight: 21.5lkg
  * 
  * 
- * 16-02 meeting Laura
- * 
  * Fixed df of 120 (indicates heavy rowing)
  * Moment of cycle indication
  * 
@@ -51,33 +45,9 @@ using System.Threading;
 
 namespace RP3_Interface
 {
-    /*public class SoundTouchProfile
-    {
-        private readonly SoundTouch _soundTouch;
-
-        public SoundTouchProfile()
-        {
-            _soundTouch = new SoundTouch();
-        }
-
-        public void SetTempo(float tempo)
-        {
-            _soundTouch.SetTempo(tempo);
-        }
-
-        public float[] Process(float[] samples, int numSamples)
-        {
-            _soundTouch.PutSamples(samples, numSamples);
-            var outputBufferSize = _soundTouch.ReceiveSamples(samples, numSamples);
-            var outputSamples = new float[outputBufferSize];
-            Array.Copy(samples, outputSamples, outputBufferSize);
-            return outputSamples;
-        }
-    }*/
-
+    
     public class Rower
     {
-
         //State tracking
         public enum State { Idle, Drive, Recovery };
         private State currState;
@@ -114,14 +84,14 @@ namespace RP3_Interface
         //Timer driveTimer;
         Queue<double> lastStrokeTimes;
 
-        //times
-        double currDriveTime;
-
         //sound
         int strokeCount;
+        private SoundTouchProcessor soundTouch;
         string audioFilePath = "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\B4.wav";
-        List<double> strokeTimes = new List<double>(); //b
-        double desiredDelay = 0.0; //Delay in sec before playing the audio fragment
+        List<double> strokeTimes = new List<double>();
+        double desiredDelay = 0.0; //Delay in sec before playing the audio fragment]
+        
+        double currDriveTime;
 
         public Rower()
         {
@@ -147,6 +117,8 @@ namespace RP3_Interface
             this.strokeTimer = new Stopwatch();
             lastStrokeTimes = new Queue<double>();
 
+            soundTouch = new SoundTouchProcessor();
+
             //for now immediatelly start timers
             //timers are not stopped yet
             timer.Start();
@@ -169,32 +141,14 @@ namespace RP3_Interface
             this.currW = angularDis / this.currentDt;
             float DeltaW = this.currW - tempW;
 
-            //Console.WriteLine(string.Format("currW : {0:0.000#####}", this.currW));
-            //Console.WriteLine(string.Format(" LinearVel : {0:0.000#####}", drive.linearVel));
-
             //check if we need to switch states
             onStateSwitch(DeltaW, this.currentDt);
 
-            /*Debugger
-            Console.WriteLine("State: "+ currState.ToString());
-            Console.WriteLine(string.Format("Total impulses : {0:0.000#####}", this.totalImpulse));
-            Console.WriteLine(string.Format("deltaTime : {0:0.000#####}", this.currentDt));
-            Console.WriteLine(string.Format("DF : {0:0.000#####}", this.dragFactor));
-            Console.WriteLine(string.Format("CF : {0:0.000#####}", this.conversionFactor));
-            Console.Write(string.Format("AngDis : {0:0.000#####}", currTheta)); 
-            Console.WriteLine(string.Format(" angVel : {0:0.000#####}", currW));
-            Console.WriteLine("");
-
-            Console.WriteLine(string.Format("DF : {0:0.000#####}", this.dragFactor));
-            Console.WriteLine(string.Format("CF : {0:0.000#####}", this.conversionFactor));
-            */
             //send back data to Neos
             this.SendDataFormat();
         }
-
- 
-
-        private void OnTimedEvent(Object source, ElapsedEventArgs e)
+        
+private void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
             Console.WriteLine("Timer triggered {0:HH:mm:ss.fff}",e.SignalTime);
 
@@ -250,79 +204,32 @@ namespace RP3_Interface
             }
         }*/
 
-        /*private double GetCurrentTime()
+        private double GetCurrentTime()
         {
             return strokeTimer.Elapsed.TotalSeconds;
-        }*/
+        }
 
-        /*private void ModifyAudioFragment(double targetTime)
+        private void ModifyAudioFragment(double targetTime)
         {
-            using (var reader = new AudioFileReader(audioFilePath))
+            // Calculate the delay in milliseconds until the target time
+            double delayMilliseconds = (targetTime - GetCurrentTime()) * 1000;
+
+            // Create a new instance of the SoundPlayer class with the audio file path
+            System.Media.SoundPlayer player = new System.Media.SoundPlayer(audioFilePath);
+
+            // Define an event handler for the SoundPlayer's LoadCompleted event
+            player.LoadCompleted += (sender, e) =>
             {
-                float speed = 1f; // Adjust speed as needed
-                int bufferSize = reader.WaveFormat.SampleRate * reader.WaveFormat.Channels;
-                var soundTouch = new SoundTouchProfile();
-                soundTouch.SetTempo(speed);
+                // Play the audio fragment after the specified delay
+                //Thread.Sleep((int)delayMilliseconds);
+                player.Play();
+            };
 
-                var buffer = new float[bufferSize];
-                var writer = new WaveFileWriter("output.wav", reader.WaveFormat);
-
-                double currentTime = 0;
-                int bytesRead;
-
-                while ((bytesRead = reader.Read(buffer, 0, bufferSize)) > 0)
-                {
-                    double sampleTime = (double)bytesRead / (reader.WaveFormat.SampleRate * reader.WaveFormat.Channels);
-                    currentTime += sampleTime;
-
-                    if (currentTime >= targetTime)
-                    {
-                        // Adjust tempo for the remaining audio
-                        var remainingBuffer = buffer.Take(bytesRead).ToArray();
-                        soundTouch.SetTempo(1 / (currentTime - targetTime));
-                        var processedBuffer = soundTouch.Process(remainingBuffer, remainingBuffer.Length / reader.WaveFormat.Channels);
-
-                        // Write the modified audio fragment
-                        writer.WriteSamples(processedBuffer, 0, processedBuffer.Length);
-                        break;
-                    }
-                    writer.WriteSamples(buffer, 0, bytesRead);
-                }
-                writer.Flush();
-                writer.Dispose();
-            }
-        }*/
+            // Load the audio fragment asynchronously
+            player.LoadAsync();
+        }
 
         //triggers when socket receives message
-        /* public void onStateSwitch(string data)
-         {
-             string d = data;
-             Console.WriteLine("Incoming: " + data);
-             float[] values = convert(d);
-
-             if (values[0] != 0f)
-             {
-                 //end of state is called on Catch, and finish. Need switch
-                 EndOfState(values, inertia, currTheta, currW);
-
-                 if (d.StartsWith("C"))
-                 {
-                     this.currState = State.Drive;
-                     strokeTimer.Start();
-                 }
-                 else if (d.StartsWith("F"))
-                 {
-                     this.currState = State.Recovery;
-                 }
-                 else if (d.StartsWith("I"))
-                 {
-                     this.currState = State.Idle;
-                     strokeTimer.Stop();
-                 }
-             }
-
-         }*/
-
         public void onStateSwitch(float dw, float dt)
         {
 
@@ -347,33 +254,30 @@ namespace RP3_Interface
                     strokeTimer.Start();
                 }
 
-                
+                // Play audio fragment after desired delay
+                double targetTime = GetCurrentTime() + desiredDelay; //Calculate target time for playing the audio fragment
+                ModifyAudioFragment(targetTime); //Play audio fragment
+
                 this.currState = State.Drive;
                 EndOfState(inertia, currTheta, dw);
             }
             else if (currAccl <= -0.1f && currState == State.Drive)//switch to recovery
             {
                 currDriveTime = strokeTimer.Elapsed.TotalSeconds;
-                Console.WriteLine("drive time : " + currDriveTime);
+                Console.WriteLine(" ");
+                Console.WriteLine("Drive time : " + currDriveTime);
                 this.currState = State.Recovery;
                 EndOfState(inertia, currTheta, dw);
 
-                // Play audio fragment after desired delay
-                //double targetTime = GetCurrentTime() + desiredDelay; //Calculate target time for playing the audio fragment
-                //ModifyAudioFragment(targetTime); //Play audio fragment
-
-
-
                 //todo: when idle
                 //this.currState = State.Idle;
-                
             }
         }
 
         private void EndOfState(float I, float t, float w)
         {
             
-            Console.WriteLine("EndOf: " + this.currState);
+            Console.WriteLine("End of: " + this.currState);
 
             switch (this.currState)
             {
@@ -404,9 +308,6 @@ namespace RP3_Interface
             }
         }
 
-
-
-
         private float[] convert(string data)
         {
             CultureInfo invC = CultureInfo.InvariantCulture;
@@ -418,57 +319,6 @@ namespace RP3_Interface
             return parsedValues;
         }
 
-        /*private void EndOfState(float[] v, float I, float t, float w)
-        {
-
-            float time = v[0];
-            //rest to be assigned
-
-            //Console.WriteLine("EndOf: " + this.currState);
-            //Console.Write("time: " + time);
-            //Console.WriteLine(" w'to set: " + w);
-            //Console.Write("df: " + dragFactor);
-            //Console.WriteLine(" cf: " + conversionFactor);
-
-
-
-            switch (this.currState)
-            {
-                case State.Drive:
-                    //Console.Write(" Drive w_start: " + drive.w_start);
-                    //Console.WriteLine(" Drive w_end: " + drive.w_end);
-                    this.drive.setEnd(t, w);
-                    //this.recovery.setStart(t, w);
-                    //this.drive.linearCalc(conversionFactor, t, w);
-                    //this.drive.reset();
-
-                    break;
-                case State.Recovery:
-                    //Console.Write(" rec w_start: " + recovery.w_start);
-                    //Console.WriteLine(" rec w_end: " + recovery.w_end);
-                    this.recovery.setEnd(t, w);
-                    //this.drive.setStart(t, w);
-
-
-                    //this.dragFactor = this.recovery.calcDF(I, time, this.dragFactor, this.fixedValue);
-                    //this.conversionFactor = updateConversionFactor();
-
-                    //this.recovery.linearCalc(conversionFactor, t, w);
-                    //this.recovery.reset();
-
-                    break;
-                    case State.Idle:
-                        this.drive.reset();
-                        this.recovery.reset();
-                        this.reset();
-                        break;
-            }
-
-            //Console.Write("NEW df: " + dragFactor);
-            //Console.WriteLine(" NEW cf: " + conversionFactor);
-        }*/
-       
-
         private float updateConversionFactor()
         {
             return (float)Math.Pow(((Math.Abs(dragFactor)/1000000) / magicFactor), 1f / 3f);
@@ -479,48 +329,7 @@ namespace RP3_Interface
             if (currState == State.Drive) return $"{currentDt}/{currW}/{drive.linearVel}\n";
             else return $"{currentDt}/{currW}/{recovery.linearVel}\n";
         }
-        /*public string SendDataFormat()
-       {
-           //output format: (e) estimated value; (m) measured value
-
-           //values to calculate
-           float estDriveLen = (float)(drive.endTheta - drive.startTheta);
-           float estDriveAngVel = (float)(estDriveLen / drive.driveTime);
-           float estDrag = (float)(0.5 * drive.dragFactor * Math.Pow(estDriveAngVel, 2));
-
-           float estRecLen = (float)(recovery.endTheta - recovery.startTheta);
-           float estRecAngVel = (float)(estRecLen / recovery.driveTime);
-           float estRecDrag = (float)(0.5 * recovery.dragFactor * Math.Pow(estRecAngVel, 2));
-
-           //current values
-           float currentDriveLen = (float)(currTheta - drive.startTheta);
-           float currentDriveAngVel = (float)(currentDriveLen / drive.driveTime);
-           float currentDrag = (float)(0.5 * drive.dragFactor * Math.Pow(currentDriveAngVel, 2));
-
-           float currentRecLen = (float)(currTheta - recovery.startTheta);
-           float currentRecAngVel = (float)(currentRecLen / recovery.driveTime);
-           float currentRecDrag = (float)(0.5 * recovery.dragFactor * Math.Pow(currentRecAngVel, 2));
-
-           Console.WriteLine("Data Send Format");
-           Console.WriteLine("Drive Time: " + drive.driveTime);
-           Console.WriteLine("Recovery Time: " + recovery.driveTime);
-           Console.WriteLine("Current Theta: " + currTheta);
-           Console.WriteLine("Current State: " + currState);
-
-           // return format string here or use other way of passing data back
-           return "a";
-           if (currState == State.Drive) return $"{currentDt}/{currW}/{drive.linearVel}\n";
-           else return $"{currentDt}/{currW}/{recovery.linearVel}\n";
-       }*/
-
-        /*private void reset()
-        {
-            this.totalImpulse = 0;
-            this.totalTime = 0;
-            this.AverageQueue.Clear();
-            this.conversionFactor = updateConversionFactor();
-        }*/
-
+        
         public void reset()
         {
             //initial values
@@ -540,18 +349,17 @@ namespace RP3_Interface
             timer.Dispose();
         }
 
-
        public void OnStrokeStart()
         {
-          
             double strokeTime = strokeTimer.Elapsed.TotalSeconds;
             lastStrokeTimes.Enqueue(strokeTime);
-            Console.WriteLine(strokeTime);
+            Console.WriteLine("Total stroke time " + strokeTime);
 
             if (lastStrokeTimes.Count > 5) lastStrokeTimes.Dequeue();
 
             double average = lastStrokeTimes.Average();
-            Console.WriteLine("ävg stroketime " + average);
+            Console.WriteLine("Average stroke time " + average);
+            //Console.WriteLine("Recovery time " + currDriveTime);
         }
     }
 }
