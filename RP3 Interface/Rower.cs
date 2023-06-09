@@ -6,6 +6,8 @@ using System.Globalization;
 using System.Timers;
 using NAudio.Wave;
 using SoundTouch;
+using System.IO;
+using System.Reflection;
 
 
 /*
@@ -93,6 +95,12 @@ namespace RP3_Interface
         
         double currDriveTime;
 
+        //CVS File 
+        private string fileName;
+        private string average;
+        private bool shouldWriteCSV;
+        private bool checkHeader;
+
         public Rower()
         {
             //state idle on start? or use incoming message to do?
@@ -101,6 +109,8 @@ namespace RP3_Interface
             this.recovery = new Recovery();
             resistanceHigh = false;
             fixedValue = true;
+            shouldWriteCSV = false;
+            checkHeader = true;
             totalImpulse = 0;
             totalTime = 0;
             strokeCount = 0;
@@ -122,6 +132,8 @@ namespace RP3_Interface
             //for now immediatelly start timers
             //timers are not stopped yet
             timer.Start();
+
+            start(); // Call the Start method to initialize the filename variable
 
             reset(); //set initial values
         }
@@ -248,6 +260,8 @@ private void OnTimedEvent(Object source, ElapsedEventArgs e)
                 {
                     OnStrokeStart();
                     strokeTimer.Restart();
+                    
+                    shouldWriteCSV = true;
                 }
                 else
                 {
@@ -268,6 +282,8 @@ private void OnTimedEvent(Object source, ElapsedEventArgs e)
                 Console.WriteLine("Drive time : " + currDriveTime);
                 this.currState = State.Recovery;
                 EndOfState(inertia, currTheta, dw);
+                
+                shouldWriteCSV = true;
 
                 //todo: when idle
                 //this.currState = State.Idle;
@@ -360,6 +376,51 @@ private void OnTimedEvent(Object source, ElapsedEventArgs e)
             double average = lastStrokeTimes.Average();
             Console.WriteLine("Average stroke time " + average);
             //Console.WriteLine("Recovery time " + currDriveTime);
+
+            Update();
+
+        }
+
+        void start()
+        {
+            string directoryPath = @"C:\Users\bartb\OneDrive - University of Twente\Documenten\University\Module 11\GP - Rowing Reimagined\Data"; // Specify the desired directory path
+            string timeStamp = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss"); // Add a timestamp to the file name
+            fileName = Path.Combine(directoryPath, $"RowingData_{timeStamp}.csv"); // Combine the directory path and timestamped file name
+        }
+
+        private void Update()
+        {
+            if (shouldWriteCSV == true)
+            {
+                WriteCSV();
+            }
+        }
+
+        public void WriteCSV()
+        {
+            using (TextWriter tw = new StreamWriter(fileName, true))
+            {
+                if (checkHeader)
+                {
+                    tw.WriteLine("currentDt; currW; linearVel; Drive time; Recovery time; Total stroke time; Average stroke time");
+                    checkHeader = false;
+                }
+
+                double totalStrokeTime = strokeTimer.Elapsed.TotalSeconds;
+                double recoveryTime = totalStrokeTime - currDriveTime;
+                double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
+
+                if (currState == State.Drive)
+                {
+                    tw.WriteLine($"{currentDt};{currW};{drive.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime}");
+                }
+                else
+                {
+                    tw.WriteLine($"{currentDt};{currW};{recovery.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime}");
+                }
+            }
+
+            //Console.WriteLine("Your CSV was saved!");
         }
     }
 }
