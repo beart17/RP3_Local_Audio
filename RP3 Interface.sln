@@ -1,0 +1,39 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29613.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RP3 Interface", "RP3 Interface\RP3 Interface.csproj", "{272619EF-4F7C-4AAF-ADD1-291A4489A057}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{45A9B807-F46B-493D-820E-E1B4EDD2A529}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Test|Any CPU = Test|Any CPU
+		Test|x64 = Test|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Debug|x64.Build.0 = Debug|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Release|Any CPU.Build.0 = Release|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Release|x64.ActiveCfg = Release|x64
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Release|x64.Build.0 = Release|x64
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Test|Any CPU.ActiveCfg = Test|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Test|Any CPU.Build.0 = Test|Any CPU
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Test|x64.ActiveCfg = Test|x64
+		{272619EF-4F7C-4AAF-ADD1-291A4489A057}.Test|x64.Build.0 = Test|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B6A3F131-B6FE-4829-B422-D578C49A1355}
+	EndGlobalSection
+EndGlobal
