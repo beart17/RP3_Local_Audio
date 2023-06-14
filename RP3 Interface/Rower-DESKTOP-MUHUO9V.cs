@@ -1,18 +1,15 @@
-﻿using NAudio.Wave;
-using NAudio;
-using SoundTouch;
-using SoundTouch.Net.NAudioSupport;
-using System;
+﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Timers;
-using SoundTouch.Assets;
-using System.Security.Cryptography;
-using System.Diagnostics.Eventing.Reader;
-
+using NAudio.Wave;
+using SoundTouch;
+using std;
+using System.IO;
+using System.Reflection;
+using SoundTouch.Net.NAudioSupport;
 
 
 /*
@@ -52,7 +49,7 @@ using System.Diagnostics.Eventing.Reader;
 
 namespace RP3_Interface
 {
-
+    
     public class Rower
     {
         //State tracking
@@ -97,13 +94,14 @@ namespace RP3_Interface
         //sound
         int strokeCount;
         private int strokeCounter;
-        private SoundTouchProcessor processor;
+        private SoundTouchProcessor soundTouch;
+        //private System.Media.SoundPlayer player;
         string audioFilePath = "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\B4.wav";
-
         List<double> strokeTimes = new List<double>();
         double desiredDelay = 0.0; //Delay in sec before playing the audio fragment
         private double soundDelay = 0.0;
         double speedAdjustment;
+        //private AudioFileReader audioFile;
 
         double currDriveTime;
 
@@ -115,20 +113,14 @@ namespace RP3_Interface
 
         public Rower()
         {
-            // Create an instance of AudioFileReader using the provided file path
-            //AudioFileReader audioFileReader = new AudioFileReader(audioFilePath);
-
-            // Convert AudioFileReader to IWaveProvider
-            //IWaveProvider waveProvider = new SoundTouchWaveProvider(audioFileReader);
-
             //state idle on start? or use incoming message to do?
             this.currState = State.Drive;
             this.drive = new Drive();
             this.recovery = new Recovery();
-            shouldWriteCSV = true;
             isDriveStarting = false;
             resistanceHigh = false;
             fixedValue = true;
+            shouldWriteCSV = false;
             checkHeader = true;
             predictedDriveStartTime = 0.0;
             totalImpulse = 0;
@@ -140,8 +132,7 @@ namespace RP3_Interface
 
             if (this.resistanceHigh) this.dragFactor = 130; // between 100 and 125, 1e-6 is accounted for
             else this.dragFactor = 120;
-            //else this.dragFactor = inertia * ;
- 
+
             timer = new System.Timers.Timer();
             timer.Interval = 3000;
             SetTimer(timer);
@@ -149,7 +140,7 @@ namespace RP3_Interface
             this.strokeTimer = new Stopwatch();
             lastStrokeTimes = new Queue<double>();
 
-            processor = new SoundTouchProcessor();
+            soundTouch = new SoundTouchProcessor();
             //audioFile = new AudioFileReader(audioFilePath);
             //player = new System.Media.SoundPlayer(audioFilePath); // create new instance sound player class with audio file path
             //player.LoadAsync(); // load in audio 
@@ -165,6 +156,7 @@ namespace RP3_Interface
             reset(); // set initial values
         }
 
+
         public void onImpulse(double currentDt)
         {
             //RP3 input
@@ -177,10 +169,7 @@ namespace RP3_Interface
 
             float tempW = this.currW;
             this.currW = angularDis / this.currentDt;
-
-            //CHECK DEZE  
             float DeltaW = this.currW - tempW;
-            //float DeltaW = Math.Abs(this.currW - tempW);
 
             //check if we need to switch states
             onStateSwitch(DeltaW, this.currentDt);
@@ -188,10 +177,10 @@ namespace RP3_Interface
             //send back data to Neos
             this.SendDataFormat();
         }
-
+        
         private void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
-            Console.WriteLine("Timer triggered {0:HH:mm:ss.fff}", e.SignalTime);
+            Console.WriteLine("Timer triggered {0:HH:mm:ss.fff}",e.SignalTime);
 
         }
 
@@ -225,121 +214,71 @@ namespace RP3_Interface
             timer.Enabled = true;
         }
 
+       /* private void calcStrokeTime()
+        {
+            if (strokeCount > 0)
+            {
+                double elapsedSeconds = strokeTimer.Elapsed.TotalSeconds;
+                strokeTimes.Add(elapsedSeconds);
+                Console.WriteLine("Stroke Time: " + elapsedSeconds);
+                strokeTimer.Restart();
+            }
+
+            strokeCount++;
+
+            if (strokeCount == 3)
+            {
+                double averageStrokeTime = strokeTimes.Average();
+                Console.WriteLine("Average Stroke Time: " + averageStrokeTime);
+                //ModifyAudioFragment(averageStrokeTime);
+            }
+        }*/
+
+/*        private double GetCurrentTime()
+        {
+            return strokeTimer.Elapsed.TotalSeconds;
+        }*/
+
         private void ModifyAudioFragment()
         {
-            // Load audio file
-            WaveFileReader audioFile = new WaveFileReader(audioFilePath);
 
-            // Convert to 32-bit float
-            WaveChannel32 inputStream = new WaveChannel32(audioFile);
-
-
-            var inputStream = new WaveChannel32(audioFile);
-
-            SoundTouchProcessor ProcessorStream = new SoundTouchProcessor();
-
-
+            AudioFileReader audioFile = new AudioFileReader(audioFilePath);
 
             double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
             double adjustedTime = averageStrokeTime / 3.0f; // Increase target time by 0.1 seconds
 
-            if (averageStrokeTime > 3.0f && averageStrokeTime < 6.0f)
+            if (averageStrokeTime > 3 && averageStrokeTime < 5) 
             {
                 // Calculate the desired speed adjustment factor
-                speedAdjustment = adjustedTime - 0.1f; // averageStrokeTime;
+                speedAdjustment = adjustedTime + 2.1; // averageStrokeTime;
             }
 
-            if (averageStrokeTime < 3.0f && averageStrokeTime > 0.0f)
+            if (averageStrokeTime < 3 && averageStrokeTime > 1)
             {
                 // Calculate the desired speed adjustment factor
-                speedAdjustment = adjustedTime + 0.1f; // averageStrokeTime;
-
+                speedAdjustment = adjustedTime + 2.0; // averageStrokeTime;
+               
             }
 
             double inclinedTime = speedAdjustment * 3.0f;
 
             // Apply the speed adjustment using SoundTouch library
-            processor.TempoChange = speedAdjustment;
+            soundTouch.TempoChange = speedAdjustment;
             Console.WriteLine("Adjusted time " + inclinedTime);
             Console.WriteLine("SpeedAdjustment factor " + speedAdjustment);
 
             // Create a SoundTouchWaveProvider with the modified audio
-            //install NAudio?
-            //var SoundTouchWaveProvider = new SoundTouchWaveProvider(audioFile.ToSampleProvider, soundTouch);
-
-            //Following the instructions
-            processor.SampleRate = 100;
-            processor.Channels = 2; //stereo
-            //find sample buffer
-            FifoSampleBuffer sample = new FifoSampleBuffer();
-            float[] bytes = new float[audioFile.Length];
-
-            sample.PutSamples(audioFile, 10);
-
-            //FifoSampleBuffer bufferSample = new FifoSampleBuffer();
-
-            processor.PutSamples(audioFile, 1);
-
-
-
-
-
-            var soundTouchWaveProvider = new SoundTouchProcessor();
-
+            var soundTouchWaveProvider = new SoundTouchWaveProvider(audioFile, soundTouch);
 
             // Create a WaveOutEvent to play the modified audio
             var waveOut = new WaveOutEvent();
             waveOut.Init(soundTouchWaveProvider);
             waveOut.Play();
+            SoundTouchProcessor
         }
-
-        /* private void ModifyAudioFragment()
-  {
-      using (var audioFile = new AudioFileReader(audioFilePath))
-      {
-          var soundTouch = new SoundTouchProcessor();
-
-          double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
-          double adjustedTime = averageStrokeTime / 3.0f; // Increase target time by 0.1 seconds
-
-          if (averageStrokeTime > 3.0f && averageStrokeTime < 6.0f)
-          {
-              // Calculate the desired speed adjustment factor
-              speedAdjustment = adjustedTime - 0.1f; // averageStrokeTime;
-          }
-
-          if (averageStrokeTime < 3.0f && averageStrokeTime > 0.0f)
-          {
-              // Calculate the desired speed adjustment factor
-              speedAdjustment = adjustedTime + 0.1f; // averageStrokeTime;
-          }
-
-          double inclinedTime = speedAdjustment * 3.0f;
-
-          // Apply the speed adjustment using SoundTouch library
-          soundTouch.TempoChange = speedAdjustment;
-
-          // Create a SoundTouchWaveProvider with the modified audio
-          var modifiedAudio = new SoundTouchWaveProvider(audioFile, soundTouch);
-
-          // Create a WaveOutEvent to play the modified audio
-          using (var waveOut = new WaveOutEvent())
-          {
-              waveOut.Init(modifiedAudio);
-              waveOut.Play();
-
-              // Wait for the audio to finish playing
-              while (waveOut.PlaybackState == PlaybackState.Playing)
-              {
-                  System.Threading.Thread.Sleep(100);
-              }
-          }
-      }
-  }*/
-
-
-        //triggers when socket receives message
-        public void onStateSwitch(float dw, float dt)
+        
+    //triggers when socket receives message
+    public void onStateSwitch(float dw, float dt)
         {
             //timer.start()
             //stroketimer.restart()
@@ -379,13 +318,12 @@ namespace RP3_Interface
 
                 //todo: when idle
                 //this.currState = State.Idle;
-             
             }
         }
 
         private void EndOfState(float I, float t, float w)
         {
-
+            
             Console.WriteLine("End of: " + this.currState);
 
             switch (this.currState)
@@ -430,7 +368,7 @@ namespace RP3_Interface
 
         private float updateConversionFactor()
         {
-            return (float)Math.Pow(((Math.Abs(dragFactor) / 1000000) / magicFactor), 1f / 3f);
+            return (float)Math.Pow(((Math.Abs(dragFactor)/1000000) / magicFactor), 1f / 3f);
         }
 
         public string SendDataFormat()
@@ -438,7 +376,7 @@ namespace RP3_Interface
             if (currState == State.Drive) return $"{currentDt}/{currW}/{drive.linearVel}\n";
             else return $"{currentDt}/{currW}/{recovery.linearVel}\n";
         }
-
+        
         public void reset()
         {
             //initial values
@@ -458,7 +396,7 @@ namespace RP3_Interface
             timer.Dispose();
         }
 
-        public void OnStrokeStart()
+       public void OnStrokeStart()
         {
             double strokeTime = strokeTimer.Elapsed.TotalSeconds;
             lastStrokeTimes.Enqueue(strokeTime);
@@ -470,10 +408,7 @@ namespace RP3_Interface
             Console.WriteLine("Average stroke time " + average);
             //Console.WriteLine("Recovery time " + currDriveTime);
 
-            if (shouldWriteCSV == true)
-            {
-                WriteCSV();
-            }
+            WriteCSV();
         }
 
         void start()
@@ -511,6 +446,8 @@ namespace RP3_Interface
                     tw.WriteLine($"{strokeCounter};{currentDt};{currW};{recovery.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime}");
                 }
             }
+
+            //Console.WriteLine("Your CSV was saved!");
         }
     }
 }

@@ -1,14 +1,9 @@
-﻿using System;
+﻿using Fleck;
+using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
+using System.IO.Ports;
 using System.Text;
 using System.Windows.Forms;
-using System.IO.Ports;
-using System.Diagnostics;
-using Fleck;
 
 
 namespace RP3_Interface
@@ -16,7 +11,7 @@ namespace RP3_Interface
     public partial class Form1 : Form
     {
         public static bool formOpen = true;
-        string lastMessage="";
+        string lastMessage = "";
 
         StringBuilder log = new StringBuilder();
 
@@ -45,11 +40,11 @@ namespace RP3_Interface
             serialPort1.DataReceived += dataReceived;
 
             wss = new WebSocketServer("ws://127.0.0.1:2070");
-            wss.Start( socket =>
+            wss.Start(socket =>
             {
                 socket.OnOpen = () =>
                 {
-                    allSockets.Add(socket); 
+                    allSockets.Add(socket);
                 };
                 socket.OnClose = () => { allSockets.Remove(socket); };
                 //socket.OnMessage += OnMessage;
@@ -210,7 +205,7 @@ namespace RP3_Interface
             if (scaleMin)
             {
                 double minChartValue = 0;
-                
+
                 foreach (var point in chart1.Series[chartIndex]?.Points)
                 {
                     if (point.YValues[0] < minChartValue)
