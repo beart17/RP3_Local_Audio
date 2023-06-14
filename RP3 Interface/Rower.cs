@@ -9,9 +9,13 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Timers;
+using System.Media;
 using SoundTouch.Assets;
 using System.Security.Cryptography;
 using System.Diagnostics.Eventing.Reader;
+using System.Threading;
+using System.Windows.Forms.DataVisualization.Charting;
+using NAudio.Wave.SampleProviders;
 
 
 
@@ -92,13 +96,15 @@ namespace RP3_Interface
         Stopwatch strokeTimer;
         //Timer driveTimer;
         Queue<double> lastStrokeTimes;
-        Timer CvsTimer;
+        System.Timers.Timer CvsTimer;
 
         //sound
         int strokeCount;
         private int strokeCounter;
-        private SoundTouchProcessor processor;
+        //private SoundTouchProcessor processor;
         string audioFilePath = "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\B4.wav";
+
+        private SoundPlayer player;
 
         List<double> strokeTimes = new List<double>();
         double desiredDelay = 0.0; //Delay in sec before playing the audio fragment
@@ -112,6 +118,9 @@ namespace RP3_Interface
         private string average;
         private bool shouldWriteCSV;
         private bool checkHeader;
+        private WaveFormat processedWaveFormat;
+        private float[] processedSamples;
+        private int numProcessedSamples;
 
         public Rower()
         {
@@ -149,12 +158,13 @@ namespace RP3_Interface
             this.strokeTimer = new Stopwatch();
             lastStrokeTimes = new Queue<double>();
 
-            processor = new SoundTouchProcessor();
+            //processor = new SoundTouchProcessor();
             //audioFile = new AudioFileReader(audioFilePath);
             //player = new System.Media.SoundPlayer(audioFilePath); // create new instance sound player class with audio file path
             //player.LoadAsync(); // load in audio 
+            player = new SoundPlayer();
 
-            CvsTimer = new Timer();
+            CvsTimer = new System.Timers.Timer();
             CvsTimer.Interval = 1000; // Set the interval to 1 second (adjust as needed)
             CvsTimer.Elapsed += OnCvsTimerElapsed; // Hook up the Elapsed event
             CvsTimer.AutoReset = true; // Set AutoReset to true to repeat the timer
@@ -227,116 +237,63 @@ namespace RP3_Interface
 
         private void ModifyAudioFragment()
         {
-            // Load audio file
-            WaveFileReader audioFile = new WaveFileReader(audioFilePath);
+            player.SoundLocation = audioFilePath;
+            player.Play();
 
-            // Convert to 32-bit float
-            WaveChannel32 inputStream = new WaveChannel32(audioFile);
-
-
-            var inputStream = new WaveChannel32(audioFile);
-
-            SoundTouchProcessor ProcessorStream = new SoundTouchProcessor();
-
-
-
-            double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
-            double adjustedTime = averageStrokeTime / 3.0f; // Increase target time by 0.1 seconds
-
-            if (averageStrokeTime > 3.0f && averageStrokeTime < 6.0f)
+            /*using (var audioFile = new WaveFileReader(audioFilePath)) // Load audio file
             {
-                // Calculate the desired speed adjustment factor
-                speedAdjustment = adjustedTime - 0.1f; // averageStrokeTime;
-            }
+                using (var inputStream = new WaveChannel32(audioFile))  // Convert to 32-bit float
+                {
+                    // Convert to 32-bit float
+                    var pcmStream = audioFile.ToSampleProvider();
 
-            if (averageStrokeTime < 3.0f && averageStrokeTime > 0.0f)
-            {
-                // Calculate the desired speed adjustment factor
-                speedAdjustment = adjustedTime + 0.1f; // averageStrokeTime;
+                    // Check the input is in stereo 24 bit format.
+                    if (audioFile.WaveFormat.Encoding != WaveFormatEncoding.Pcm || audioFile.WaveFormat.BitsPerSample != 24 || audioFile.WaveFormat.Channels != 2)
+                    {
+                        var conversionStream = new WaveFormatConversionStream(new WaveFormat(44100, 24, 2), audioFile);
+                        pcmStream = conversionStream.ToSampleProvider();
+                    }
 
-            }
+                    // Convert back to IWaveProvider
+                    IWaveProvider waveProvider = new SampleToWaveProvider(pcmStream);
 
-            double inclinedTime = speedAdjustment * 3.0f;
+                    // Initialize SoundTouch Processor
+                    var processor = new SoundTouchProcessor();
+                    processor.SampleRate = 44100;
+                    processor.Channels = 2;
 
-            // Apply the speed adjustment using SoundTouch library
-            processor.TempoChange = speedAdjustment;
-            Console.WriteLine("Adjusted time " + inclinedTime);
-            Console.WriteLine("SpeedAdjustment factor " + speedAdjustment);
+                    double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
+                    double adjustedTime = averageStrokeTime / 3.0f; // Increase target time by 0.1 seconds
 
-            // Create a SoundTouchWaveProvider with the modified audio
-            //install NAudio?
-            //var SoundTouchWaveProvider = new SoundTouchWaveProvider(audioFile.ToSampleProvider, soundTouch);
+                    if (averageStrokeTime > 3.0f && averageStrokeTime < 6.0f)
+                    {
+                        // Calculate the desired speed adjustment factor
+                        speedAdjustment = adjustedTime - 0.1f; // averageStrokeTime;
+                    }
 
-            //Following the instructions
-            processor.SampleRate = 100;
-            processor.Channels = 2; //stereo
-            //find sample buffer
-            FifoSampleBuffer sample = new FifoSampleBuffer();
-            float[] bytes = new float[audioFile.Length];
+                    if (averageStrokeTime < 3.0f && averageStrokeTime > 0.0f)
+                    {
+                        // Calculate the desired speed adjustment factor
+                        speedAdjustment = adjustedTime + 0.1f; // averageStrokeTime;
+                    }
 
-            sample.PutSamples(audioFile, 10);
+                    double inclinedTime = speedAdjustment * 3.0f;
 
-            //FifoSampleBuffer bufferSample = new FifoSampleBuffer();
+                    // Apply the speed adjustment using SoundTouch library
+                    processor.TempoChange = speedAdjustment;
+                    Console.WriteLine("Adjusted time " + inclinedTime);
+                    Console.WriteLine("SpeedAdjustment factor " + speedAdjustment);
 
-            processor.PutSamples(audioFile, 1);
+                    // Create a SoundTouchWaveProvider with the modified audio
+                    var soundTouchWaveProvider = new SoundTouchWaveProvider(waveProvider, processor);
 
+                    var waveOut = new WaveOutEvent();
+                    waveOut.Init(soundTouchWaveProvider);
 
-
-
-
-            var soundTouchWaveProvider = new SoundTouchProcessor();
-
-
-            // Create a WaveOutEvent to play the modified audio
-            var waveOut = new WaveOutEvent();
-            waveOut.Init(soundTouchWaveProvider);
-            waveOut.Play();
+                    waveOut.Play();
+                }
+            }*/
         }
-
-        /* private void ModifyAudioFragment()
-  {
-      using (var audioFile = new AudioFileReader(audioFilePath))
-      {
-          var soundTouch = new SoundTouchProcessor();
-
-          double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
-          double adjustedTime = averageStrokeTime / 3.0f; // Increase target time by 0.1 seconds
-
-          if (averageStrokeTime > 3.0f && averageStrokeTime < 6.0f)
-          {
-              // Calculate the desired speed adjustment factor
-              speedAdjustment = adjustedTime - 0.1f; // averageStrokeTime;
-          }
-
-          if (averageStrokeTime < 3.0f && averageStrokeTime > 0.0f)
-          {
-              // Calculate the desired speed adjustment factor
-              speedAdjustment = adjustedTime + 0.1f; // averageStrokeTime;
-          }
-
-          double inclinedTime = speedAdjustment * 3.0f;
-
-          // Apply the speed adjustment using SoundTouch library
-          soundTouch.TempoChange = speedAdjustment;
-
-          // Create a SoundTouchWaveProvider with the modified audio
-          var modifiedAudio = new SoundTouchWaveProvider(audioFile, soundTouch);
-
-          // Create a WaveOutEvent to play the modified audio
-          using (var waveOut = new WaveOutEvent())
-          {
-              waveOut.Init(modifiedAudio);
-              waveOut.Play();
-
-              // Wait for the audio to finish playing
-              while (waveOut.PlaybackState == PlaybackState.Playing)
-              {
-                  System.Threading.Thread.Sleep(100);
-              }
-          }
-      }
-  }*/
-
 
         //triggers when socket receives message
         public void onStateSwitch(float dw, float dt)
