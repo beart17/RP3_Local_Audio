@@ -6,12 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Timers;
 using System.Media;
-using SoundTouch.Assets;
-using System.Security.Cryptography;
-using System.Diagnostics.Eventing.Reader;
-using System.Threading;
-using System.Windows.Forms.DataVisualization.Charting;
-using System.Numerics;
+using NAudio.Wave;
+using System.Threading.Tasks;
 
 /*
  * Distance over time is the performance output of the C2
@@ -89,17 +85,18 @@ namespace RP3_Interface
         System.Timers.Timer timer;
         Stopwatch strokeTimer;
         System.Timers.Timer CvsTimer;
+        private Stopwatch programTimer; // Timer that starts when the program is running
 
         //sound
         private string audioFilePath;
-        private List<string> audioFilePathsB1; // List of audio file path
-        private List<string> audioFilePathsB2; // List of audio file path
+        private List<string> audioFilePathsB1;
+        private List<string> audioFilePathsB2;
         private Queue<double> lastStrokeTimes;
         private SoundPlayer player;
-        //private WaveOutEvent waveOutEvent;
-        //private WaveStream waveStream;
-        private int currentAudioIndex;
         private int soundFragment;
+        private int currentAudioIndex;
+        private int selectIndex;
+        private int newIndex;
 
         List<double> strokeTimes = new List<double>();
         double desiredDelay = 0.0; //Delay in sec before playing the audio fragment
@@ -114,6 +111,8 @@ namespace RP3_Interface
         private bool checkHeader;
         public double currDriveTime;
 
+        private AudioFileReader audioFileReader;
+        private WaveOutEvent outputDevice;
 
         public Rower()
         {
@@ -150,11 +149,15 @@ namespace RP3_Interface
             CvsTimer.AutoReset = true; // Set AutoReset to true to repeat the timer
             CvsTimer.Enabled = false; // Initially disable the timer
 
+            programTimer = new Stopwatch();
+            programTimer.Start();
+
             // Audio index
             //this.audioFilePath = "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\B4.2.wav";
 
             audioFilePathsB1 = new List<string>
             {
+                "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-1.10.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-1.10.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-1.9.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-1.8.wav",
@@ -180,6 +183,7 @@ namespace RP3_Interface
             audioFilePathsB2 = new List<string>
             {
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-2.10.wav",
+                "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-2.10.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-2.9.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-2.8.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B-2.7.wav",
@@ -201,14 +205,33 @@ namespace RP3_Interface
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B2.9.wav",
                 "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\SonificationFragments\\B2.10.wav"
             };
-            currentAudioIndex = 11;
+            currentAudioIndex = 0;
             player = new SoundPlayer();
-            //waveOutEvent = new WaveOutEvent();
+
+            /*// Preload audio files into memory using NAudio's AudioFileReader
+                        foreach (var filePath in audioFilePathsB1)
+                        {
+                            var audioFileReader = new AudioFileReader(filePath);
+                            audioFileReadersB1.Add(currentAudioIndex, audioFileReader);
+                            currentAudioIndex++;
+                        }
+
+                        currentAudioIndex = 0;
+
+                        foreach (var filePath in audioFilePathsB2)
+                        {
+                            var audioFileReader = new AudioFileReader(filePath);
+                            audioFileReadersB2.Add(currentAudioIndex, audioFileReader);
+                            currentAudioIndex++;
+                        }*/
+
             lastStrokeTimes = new Queue<double>();
             soundFragment = 1;
 
-            SetPathCVS(); // call the Start method to initialize the filename variable
+            //audioFilePath = audioFilePathsB1[currentAudioIndex];
+            outputDevice = new WaveOutEvent();
 
+            SetPathCVS(); // call the Start method to initialize the filename variable
             reset(); // set initial values
         }
 
@@ -241,12 +264,11 @@ namespace RP3_Interface
             }
         }
 
-        private void PlayAudio()
+        private void PlayAudio1()
         {
             double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
             double timeFactor = averageStrokeTime / 3.0f;
 
-            int selectIndex;
             if (timeFactor > 0.9f && timeFactor < 1.1f)
             {
                 selectIndex = 11;
@@ -257,13 +279,23 @@ namespace RP3_Interface
                 selectIndex = Math.Max(1, Math.Min(selectIndex, 20));
             }
 
-            if (soundFragment == 1)
+            if (averageStrokeTime > 3.3f && averageStrokeTime < 6.0f)
             {
-                audioFilePath = audioFilePathsB1[selectIndex]; // Get the audio file path B1
+                // Calculate the desired speed adjustment factor
+                newIndex = selectIndex - 1; //choosing a fragment closer to 3 sec;
             }
-            else if (soundFragment == 2)
+
+            if (averageStrokeTime < 2.7f && averageStrokeTime > 0.0f)
             {
-                audioFilePath = audioFilePathsB2[selectIndex]; // Get the audio file path B2
+                // Calculate the desired speed adjustment factor
+                newIndex = selectIndex + 1; //choosing a fragment closer to 3 sec;
+            }
+
+            List<string> audioFilePaths = soundFragment == 1 ? audioFilePathsB1 : audioFilePathsB2;
+
+            if (selectIndex < audioFilePaths.Count)
+            {
+                audioFilePath = audioFilePaths[newIndex];
             }
             else
             {
@@ -272,6 +304,49 @@ namespace RP3_Interface
 
             player.SoundLocation = audioFilePath;
             player.Play();
+
+            Console.WriteLine("Audiofragment " + selectIndex);
+            Console.WriteLine("Factor : " + timeFactor);
+        }
+
+        private void PlayAudio2()
+        {
+            // Dispose the output device if it is already initialized and playing
+            if (outputDevice.PlaybackState == PlaybackState.Playing)
+            {
+                outputDevice.Stop();
+                outputDevice.Dispose();
+            }
+
+            double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
+            double timeFactor = averageStrokeTime / 3.0f;
+
+            if (timeFactor > 0.9f && timeFactor < 1.1f)
+            {
+                selectIndex = 11;
+            }
+            else
+            {
+                selectIndex = (int)((timeFactor - 0.0f) / 0.1f) + 1;
+                selectIndex = Math.Max(1, Math.Min(selectIndex, 20));
+            }
+
+            List<string> audioFilePaths = soundFragment == 1 ? audioFilePathsB1 : audioFilePathsB2;
+
+            if (selectIndex < audioFilePaths.Count)
+            {
+                audioFilePath = audioFilePaths[selectIndex];
+            }
+            else
+            {
+                throw new InvalidOperationException("Invalid sound fragment.");
+            }
+
+            AudioFileReader audioFileReader = new AudioFileReader(audioFilePath);
+            outputDevice.Init(audioFileReader);
+            outputDevice.Play();
+            Console.WriteLine("Audiofragment " + selectIndex);
+            Console.WriteLine("Factor : " + timeFactor);
         }
 
         private void OnTimedEvent(Object source, ElapsedEventArgs e)
@@ -336,7 +411,8 @@ namespace RP3_Interface
                     strokeTimer.Start();
                 }
 
-                PlayAudio(); //Play audio fragment
+                PlayAudio1(); //Play audio fragment
+                // PlayAudio2(): //Play audio fragment
 
                 this.currState = State.Drive;
                 EndOfState(inertia, currTheta, dw);
@@ -351,7 +427,7 @@ namespace RP3_Interface
 
                 //todo: when idle
                 //this.currState = State.Idle;
-             
+
             }
         }
 
@@ -447,7 +523,7 @@ namespace RP3_Interface
         {
             string directoryPath = @"C:\Users\bartb\OneDrive - University of Twente\Documenten\University\Module 11\GP - Rowing Reimagined\Data"; // Specify the desired directory path for CVS file
             string timeStamp = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss"); // Add a timestamp to the file name
-            fileName = Path.Combine(directoryPath, $"RowingData_{timeStamp}.csv"); // Combine the directory path and timestamped file name
+            fileName = Path.Combine(directoryPath, $"RowingData_Test1_{timeStamp}.csv"); // Combine the directory path and timestamped file name
         }
 
         private void OnCvsTimerElapsed(object sender, ElapsedEventArgs e)
@@ -461,21 +537,24 @@ namespace RP3_Interface
             {
                 if (checkHeader)
                 {
-                    tw.WriteLine("stroke count; currentDt; currW; linearVel; Total stroke time; Average stroke time; Drive time; Recovery time");
+                    tw.WriteLine("Time; Stroke count; currentDt; currW; linearVel; Total stroke time; Average stroke time; Drive time; Recovery time; SPM; Force");
                     checkHeader = false;
                 }
 
                 double totalStrokeTime = strokeTimer.Elapsed.TotalSeconds;
                 double recoveryTime = totalStrokeTime - currDriveTime;
                 double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
+                double strokesPerMinute = 60 / averageStrokeTime; // Calculate strokes per minute
+                double programTime = programTimer.Elapsed.TotalSeconds; // Get the elapsed time since the program started
+                double force = dragFactor * Math.Pow((currState == State.Drive ? drive.linearVel : recovery.linearVel), 3); // Calculate the force
 
                 if (currState == State.Drive)
                 {
-                    tw.WriteLine($"{strokeCounter};{currentDt};{currW};{drive.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime}");
+                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};{drive.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime};{strokesPerMinute};{force}");
                 }
                 else
                 {
-                    tw.WriteLine($"{strokeCounter};{currentDt};{currW};{recovery.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime}");
+                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};{recovery.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime};{strokesPerMinute};{force}");
                 }
             }
         }
