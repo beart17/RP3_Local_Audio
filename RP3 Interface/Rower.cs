@@ -7,7 +7,6 @@ using System.Linq;
 using System.Timers;
 using System.Media;
 using NAudio.Wave;
-using System.Threading.Tasks;
 
 /*
  * Distance over time is the performance output of the C2
@@ -83,9 +82,9 @@ namespace RP3_Interface
 
         //timers
         System.Timers.Timer timer;
-        Stopwatch strokeTimer;
         System.Timers.Timer CvsTimer;
-        private Stopwatch programTimer; // Timer that starts when the program is running
+        Stopwatch strokeTimer;
+        Stopwatch programTimer;
 
         //sound
         private string audioFilePath;
@@ -99,7 +98,7 @@ namespace RP3_Interface
         private int newIndex;
 
         List<double> strokeTimes = new List<double>();
-        double desiredDelay = 0.0; //Delay in sec before playing the audio fragment
+        double desiredDelay = 0.0;
         private double soundDelay = 0.0;
 
         //CVS File 
@@ -128,7 +127,7 @@ namespace RP3_Interface
             totalImpulse = 0;
             totalTime = 0;
             strokeCount = 0;
-            strokeCounter = 1;
+            strokeCounter = 0; //Counter of stroke CVS file
             strokeTimes = new List<double>();
             AverageQueue = new Queue<double>(n_runningAvg);
 
@@ -144,16 +143,13 @@ namespace RP3_Interface
             lastStrokeTimes = new Queue<double>();
 
             CvsTimer = new System.Timers.Timer();
-            CvsTimer.Interval = 1000; // Set the interval to 1 second (adjust as needed)
-            CvsTimer.Elapsed += OnCvsTimerElapsed; // Hook up the Elapsed event
-            CvsTimer.AutoReset = true; // Set AutoReset to true to repeat the timer
-            CvsTimer.Enabled = false; // Initially disable the timer
+            CvsTimer.Interval = 1000;
+            CvsTimer.Elapsed += OnCvsTimerElapsed;
+            CvsTimer.AutoReset = true;
+            CvsTimer.Enabled = false;
 
+            programTimer = null;
             programTimer = new Stopwatch();
-            programTimer.Start();
-
-            // Audio index
-            //this.audioFilePath = "C:\\Users\\bartb\\OneDrive - University of Twente\\Documenten\\University\\Module 11\\GP - Rowing Reimagined\\B4.2.wav";
 
             audioFilePathsB1 = new List<string>
             {
@@ -208,27 +204,9 @@ namespace RP3_Interface
             currentAudioIndex = 0;
             player = new SoundPlayer();
 
-            /*// Preload audio files into memory using NAudio's AudioFileReader
-                        foreach (var filePath in audioFilePathsB1)
-                        {
-                            var audioFileReader = new AudioFileReader(filePath);
-                            audioFileReadersB1.Add(currentAudioIndex, audioFileReader);
-                            currentAudioIndex++;
-                        }
-
-                        currentAudioIndex = 0;
-
-                        foreach (var filePath in audioFilePathsB2)
-                        {
-                            var audioFileReader = new AudioFileReader(filePath);
-                            audioFileReadersB2.Add(currentAudioIndex, audioFileReader);
-                            currentAudioIndex++;
-                        }*/
-
             lastStrokeTimes = new Queue<double>();
-            soundFragment = 1;
+            soundFragment = 2;
 
-            //audioFilePath = audioFilePathsB1[currentAudioIndex];
             outputDevice = new WaveOutEvent();
 
             SetPathCVS(); // call the Start method to initialize the filename variable
@@ -248,6 +226,16 @@ namespace RP3_Interface
             float tempW = this.currW;
             this.currW = angularDis / this.currentDt;
 
+
+            if (currState == State.Drive)
+            {
+                drive.linearCalc(conversionFactor, currTheta, currW);
+            }
+            if (currState == State.Recovery)
+            {
+                recovery.linearCalc(conversionFactor, currTheta, currW);
+            }
+
             //CHECK DEZE  
             float DeltaW = this.currW - tempW;
             //float DeltaW = Math.Abs(this.currW - tempW);
@@ -264,7 +252,7 @@ namespace RP3_Interface
             }
         }
 
-        private void PlayAudio1()
+        private void PlayAudio()
         {
             double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
             double timeFactor = averageStrokeTime / 3.0f;
@@ -309,46 +297,6 @@ namespace RP3_Interface
             Console.WriteLine("Factor : " + timeFactor);
         }
 
-        private void PlayAudio2()
-        {
-            // Dispose the output device if it is already initialized and playing
-            if (outputDevice.PlaybackState == PlaybackState.Playing)
-            {
-                outputDevice.Stop();
-                outputDevice.Dispose();
-            }
-
-            double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
-            double timeFactor = averageStrokeTime / 3.0f;
-
-            if (timeFactor > 0.9f && timeFactor < 1.1f)
-            {
-                selectIndex = 11;
-            }
-            else
-            {
-                selectIndex = (int)((timeFactor - 0.0f) / 0.1f) + 1;
-                selectIndex = Math.Max(1, Math.Min(selectIndex, 20));
-            }
-
-            List<string> audioFilePaths = soundFragment == 1 ? audioFilePathsB1 : audioFilePathsB2;
-
-            if (selectIndex < audioFilePaths.Count)
-            {
-                audioFilePath = audioFilePaths[selectIndex];
-            }
-            else
-            {
-                throw new InvalidOperationException("Invalid sound fragment.");
-            }
-
-            AudioFileReader audioFileReader = new AudioFileReader(audioFilePath);
-            outputDevice.Init(audioFileReader);
-            outputDevice.Play();
-            Console.WriteLine("Audiofragment " + selectIndex);
-            Console.WriteLine("Factor : " + timeFactor);
-        }
-
         private void OnTimedEvent(Object source, ElapsedEventArgs e)
         {
             Console.WriteLine("Timer triggered {0:HH:mm:ss.fff}", e.SignalTime);
@@ -388,21 +336,22 @@ namespace RP3_Interface
         //triggers when socket receives message
         public void onStateSwitch(float dw, float dt)
         {
-            //timer.start()
-            //stroketimer.restart()
-            //timer.stop()
-
+            //string d = data;
             float currAccl = dw / dt;
+            //float[] values = convert(d);
 
-            //Console.Write("Acceleration" + currAccl);
-
-            if (currAccl >= 0.2f && currState == State.Recovery) //switch to drive
+            if (currAccl >= 0.2f && (currState == State.Recovery || currState == State.Idle)) //switch to drive
             {
-
                 if (strokeTimer.IsRunning)
                 {
                     OnStrokeStart();
                     strokeTimer.Restart();
+
+                    if (!programTimer.IsRunning)
+                    {
+                        programTimer = new Stopwatch();
+                        programTimer.Start();
+                    }
 
                     strokeCounter++;
                 }
@@ -411,23 +360,23 @@ namespace RP3_Interface
                     strokeTimer.Start();
                 }
 
-                PlayAudio1(); //Play audio fragment
-                // PlayAudio2(): //Play audio fragment
+                PlayAudio();
 
                 this.currState = State.Drive;
                 EndOfState(inertia, currTheta, dw);
             }
-            else if (currAccl <= -0.1f && currState == State.Drive)//switch to recovery
+            else if (currAccl <= -0.1f && (currState == State.Drive || currState == State.Idle)) //switch to recovery
             {
                 currDriveTime = strokeTimer.Elapsed.TotalSeconds;
                 Console.WriteLine(" ");
                 Console.WriteLine("Drive time : " + currDriveTime);
                 this.currState = State.Recovery;
                 EndOfState(inertia, currTheta, dw);
-
-                //todo: when idle
-                //this.currState = State.Idle;
-
+            }
+            else if (Math.Abs(currAccl) < 0.01f && currState != State.Idle)
+            {
+                this.currState = State.Idle;
+                EndOfState(inertia, currTheta, dw);
             }
         }
 
@@ -449,7 +398,6 @@ namespace RP3_Interface
                     this.recovery.setEnd(t, w);
                     this.drive.setStart(t, w);
 
-
                     //this.dragFactor = this.recovery.calcDF(I, time, this.dragFactor, this.fixedValue);
                     this.conversionFactor = updateConversionFactor();
 
@@ -457,11 +405,12 @@ namespace RP3_Interface
                     this.recovery.reset();
 
                     break;
-                    /*case State.Idle:
-                        this.drive.reset();
-                        this.recovery.reset();
-                        this.reset();
-                        break;*/
+                case State.Idle:
+                    Console.WriteLine("System is idle.");
+                    this.drive.reset();
+                    this.recovery.reset();
+                    this.reset();
+                    break;
             }
         }
 
@@ -523,7 +472,11 @@ namespace RP3_Interface
         {
             string directoryPath = @"C:\Users\bartb\OneDrive - University of Twente\Documenten\University\Module 11\GP - Rowing Reimagined\Data"; // Specify the desired directory path for CVS file
             string timeStamp = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss"); // Add a timestamp to the file name
-            fileName = Path.Combine(directoryPath, $"RowingData_Test1_{timeStamp}.csv"); // Combine the directory path and timestamped file name
+            //fileName = Path.Combine(directoryPath, $"RowingData_Test20_W_{timeStamp}.csv"); // Combine the directory path and timestamped file name
+            //fileName = Path.Combine(directoryPath, $"RowingData_Test20_VR_{timeStamp}.csv");
+            //fileName = Path.Combine(directoryPath, $"RowingData_Test20_VR_S_{timeStamp}.csv");
+            //fileName = Path.Combine(directoryPath, $"RowingData_Test20_N_VR_{timeStamp}.csv");
+            fileName = Path.Combine(directoryPath, $"RowingData_Test20_N_VR_S_{timeStamp}.csv");
         }
 
         private void OnCvsTimerElapsed(object sender, ElapsedEventArgs e)
@@ -537,7 +490,7 @@ namespace RP3_Interface
             {
                 if (checkHeader)
                 {
-                    tw.WriteLine("Time; Stroke count; currentDt; currW; linearVel; Total stroke time; Average stroke time; Drive time; Recovery time; SPM; Force");
+                    tw.WriteLine("Time; Stroke count; currentDt; currW; linearVel; Total stroke time; Average stroke time; Drive time; Recovery time; SPM; Power; State");
                     checkHeader = false;
                 }
 
@@ -546,15 +499,20 @@ namespace RP3_Interface
                 double averageStrokeTime = lastStrokeTimes.Any() ? lastStrokeTimes.Average() : 0.0;
                 double strokesPerMinute = 60 / averageStrokeTime; // Calculate strokes per minute
                 double programTime = programTimer.Elapsed.TotalSeconds; // Get the elapsed time since the program started
-                double force = dragFactor * Math.Pow((currState == State.Drive ? drive.linearVel : recovery.linearVel), 3); // Calculate the force
+                double power = dragFactor * Math.Pow((currState == State.Drive ? drive.linearVel : recovery.linearVel), 3); // Calculate the force
+                int state = (int)currState; // Convert the state to an integer (Idle = 0, Drive = 1, Recovery = 2)
 
                 if (currState == State.Drive)
                 {
-                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};{drive.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime};{strokesPerMinute};{force}");
+                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};{drive.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};;{strokesPerMinute};{power};{state}");
+                }
+                else if (currState == State.Recovery)
+                {
+                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};{recovery.linearVel};{totalStrokeTime};{averageStrokeTime};;{recoveryTime};{strokesPerMinute};{power};{state}");
                 }
                 else
                 {
-                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};{recovery.linearVel};{totalStrokeTime};{averageStrokeTime};{currDriveTime};{recoveryTime};{strokesPerMinute};{force}");
+                    tw.WriteLine($"{programTime};{strokeCounter};{currentDt};{currW};;{totalStrokeTime};{averageStrokeTime};;;{strokesPerMinute};;{state}");
                 }
             }
         }

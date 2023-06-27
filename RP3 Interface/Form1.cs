@@ -172,14 +172,14 @@ namespace RP3_Interface
 
         //Data incoming, event triggered
         //what data incoming-> cast or do something...
-        /*void OnMessage(string message)
+     /*   void OnMessage(string message)
         {
             lastMessage = message;
             log.Append(message);
             //Message indicate Cath or Finish
             this.rower.onStateSwitch(message);
-        }*/
-
+        }
+*/
         private void addPoint(int chartIndex, double value, int pointCount, bool scaleMax = false, bool scaleMin = false)
         {
             chart1.Series[chartIndex]?.Points.AddY(value);
